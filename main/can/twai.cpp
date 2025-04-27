@@ -4,40 +4,23 @@
 
 #define TAG		"TWAI"
 
-static const twai_general_config_t can0_config = {
-	.controller_id	= 0,
-	.mode			= CAN_MODE,
-	.tx_io			= CAN0_TX_PORT,
-	.rx_io			= CAN0_RX_PORT,
-	.clkout_io		= CAN_CLK_IO,
-	.bus_off_io		= CAN_BUS_IO,
-	.tx_queue_len	= 0,
-	.rx_queue_len	= CAN_INTERNAL_BUFFER_SIZE,
-	.alerts_enabled = CAN_ALERTS,
-	.clkout_divider = CAN_CLK_DIVIDER,
-	.intr_flags		= CAN_FLAGS
-};
-
-static const twai_general_config_t can1_config = {
-	.controller_id	= 0,
-	.mode			= CAN_MODE,
-	.tx_io			= CAN1_TX_PORT,
-	.rx_io			= CAN1_RX_PORT,
-	.clkout_io		= CAN_CLK_IO,
-	.bus_off_io		= CAN_BUS_IO,
-	.tx_queue_len	= 0,
-	.rx_queue_len	= CAN_INTERNAL_BUFFER_SIZE,
-	.alerts_enabled = CAN_ALERTS,
-	.clkout_divider = CAN_CLK_DIVIDER,
-	.intr_flags		= CAN_FLAGS
-};
-
-static const twai_filter_config_t	can_filter_config	= CAN_FILTER;
-
-TwaiBusData_t		CTwai::canStruct[TWAI_BUS_COUNT] = {
+TwaiBusData_t		CTwai::canBus[TWAI_BUS_COUNT] = {
 	{
 		.thisBus			= TWAI_IN_BUS,
 		.outBus				= TWAI_OUT_BUS,
+		.twaiConfig			= {
+			.controller_id	= TWAI_IN_BUS,
+			.mode			= CAN_MODE,
+			.tx_io			= CAN0_TX_PORT,
+			.rx_io			= CAN0_RX_PORT,
+			.clkout_io		= CAN_CLK_IO,
+			.bus_off_io		= CAN_BUS_IO,
+			.tx_queue_len	= CAN_INTERNAL_TX_BUFFER_SIZE,
+			.rx_queue_len	= CAN_INTERNAL_RX_BUFFER_SIZE,
+			.alerts_enabled = CAN_ALERTS,
+			.clkout_divider = CAN_CLK_DIVIDER,
+			.intr_flags		= CAN_FLAGS
+		},
 		.receiveTaskMutex	= NULL,
 		.alertTaskMutex		= NULL,
 		.busOffMutex		= NULL,
@@ -46,6 +29,19 @@ TwaiBusData_t		CTwai::canStruct[TWAI_BUS_COUNT] = {
 	{
 		.thisBus			= TWAI_OUT_BUS,
 		.outBus				= TWAI_IN_BUS,
+		.twaiConfig = {
+			.controller_id	= TWAI_OUT_BUS,
+			.mode			= CAN_MODE,
+			.tx_io			= CAN1_TX_PORT,
+			.rx_io			= CAN1_RX_PORT,
+			.clkout_io		= CAN_CLK_IO,
+			.bus_off_io		= CAN_BUS_IO,
+			.tx_queue_len	= CAN_INTERNAL_TX_BUFFER_SIZE,
+			.rx_queue_len	= CAN_INTERNAL_RX_BUFFER_SIZE,
+			.alerts_enabled = CAN_ALERTS,
+			.clkout_divider = CAN_CLK_DIVIDER,
+			.intr_flags		= CAN_FLAGS
+		},
 		.receiveTaskMutex	= NULL,
 		.alertTaskMutex		= NULL,
 		.busOffMutex		= NULL,
@@ -69,9 +65,9 @@ int CTwai::init()
 
 	//init mutexes
 	for (uint8_t i = 0; i < TWAI_BUS_COUNT; i++) {
-		canStruct[i].receiveTaskMutex	= xSemaphoreCreateMutex();
-		canStruct[i].alertTaskMutex		= xSemaphoreCreateMutex();
-		canStruct[i].busOffMutex		= xSemaphoreCreateMutex();
+		canBus[i].receiveTaskMutex	= xSemaphoreCreateMutex();
+		canBus[i].alertTaskMutex	= xSemaphoreCreateMutex();
+		canBus[i].busOffMutex		= xSemaphoreCreateMutex();
 	}
 
 	ESP_LOGI(TAG, "init: complete");
@@ -91,9 +87,9 @@ int CTwai::deinit()
 
 	bool16 didDeInit = false;
 	for (uint8_t i = 0; i < TWAI_BUS_COUNT; i++) {
-		SafeDeleteSemaphore(canStruct[i].receiveTaskMutex, didDeInit)
-		SafeDeleteSemaphore(canStruct[i].alertTaskMutex, didDeInit)
-		SafeDeleteSemaphore(canStruct[i].busOffMutex, didDeInit)
+		SafeDeleteSemaphore(canBus[i].receiveTaskMutex, didDeInit)
+		SafeDeleteSemaphore(canBus[i].alertTaskMutex, didDeInit)
+		SafeDeleteSemaphore(canBus[i].busOffMutex, didDeInit)
 	}
 
 	currentState = TWAI_DEINIT;
@@ -123,17 +119,18 @@ int CTwai::start(TwaiBaud_t baud)
 	}
 	baudRate = baud;
 
-	twai_timing_config_t can_timing_config = getBaudConfig(baud);
-    ESP_ERROR_CHECK(twai_driver_install_v2(&can0_config, &can_timing_config, &can_filter_config, &canStruct[0].twaiHandle));
-	ESP_ERROR_CHECK(twai_driver_install_v2(&can1_config, &can_timing_config, &can_filter_config, &canStruct[1].twaiHandle));
-	ESP_ERROR_CHECK(twai_start_v2(canStruct[0].twaiHandle));
-	ESP_ERROR_CHECK(twai_start_v2(canStruct[1].twaiHandle));
+	for (uint8_t i = 0; i < TWAI_BUS_COUNT; i++) {
+		const twai_filter_config_t	can_filter_config = CAN_FILTER;
+		twai_timing_config_t can_timing_config = getBaudConfig(baud);
+		ESP_ERROR_CHECK(twai_driver_install_v2(&canBus[i].twaiConfig, &can_timing_config, &can_filter_config, &canBus[i].twaiHandle));
+		ESP_ERROR_CHECK(twai_start_v2(canBus[i].twaiHandle));
+	}
 
 	currentState = TWAI_RUNNING;
 
 	for (uint8_t i = 0; i < TWAI_BUS_COUNT; i++) {
-		ESP_ERROR_CHECK(xTaskCreate(alertTask,   "twai_alert_task",   CAN_TASK_STACK_SIZE, (void*)&canStruct[i], CAN_TWAI_TASK_PRIO, NULL));
-		ESP_ERROR_CHECK(xTaskCreate(receiveTask, "twai_receive_task", CAN_TASK_STACK_SIZE, (void*)&canStruct[i], CAN_TWAI_TASK_PRIO, NULL));
+		ESP_ERROR_CHECK(xTaskCreate(alertTask,   "twai_alert_task",   CAN_TASK_STACK_SIZE, (void*)&canBus[i], CAN_TWAI_TASK_PRIO, NULL));
+		ESP_ERROR_CHECK(xTaskCreate(receiveTask, "twai_receive_task", CAN_TASK_STACK_SIZE, (void*)&canBus[i], CAN_TWAI_TASK_PRIO, NULL));
 	}
 
 	ESP_LOGI(TAG, "start: complete");
@@ -152,16 +149,16 @@ int CTwai::stop()
 	currentState = TWAI_STOPPING;
 
 	for (uint8_t i = 0; i < TWAI_BUS_COUNT; i++) {
-		tMUTEX(canStruct[i].receiveTaskMutex);
-		rMUTEX(canStruct[i].receiveTaskMutex);
+		tMUTEX(canBus[i].receiveTaskMutex);
+		rMUTEX(canBus[i].receiveTaskMutex);
 
-		tMUTEX(canStruct[i].alertTaskMutex);
-		rMUTEX(canStruct[i].alertTaskMutex);
+		tMUTEX(canBus[i].alertTaskMutex);
+		rMUTEX(canBus[i].alertTaskMutex);
 
 		ESP_LOGI(TAG, "stop: bus[%u] tasks stopped", i);
 
-		twai_stop_v2(canStruct[i].twaiHandle);
-		twai_driver_uninstall_v2(canStruct[i].twaiHandle);
+		twai_stop_v2(canBus[i].twaiHandle);
+		twai_driver_uninstall_v2(canBus[i].twaiHandle);
 
 		ESP_LOGI(TAG, "stop: bus[%u] driver uninstalled", i);
 	}
@@ -173,11 +170,11 @@ int CTwai::stop()
 
 int CTwai::send(TwaiBus_t bus, twai_message_t * msg)
 {
-	tMUTEX(canStruct[bus].busOffMutex);
-	rMUTEX(canStruct[bus].busOffMutex);
+	tMUTEX(canBus[bus].busOffMutex);
+	rMUTEX(canBus[bus].busOffMutex);
 
 	uint16_t retry = 0;
-	while (twai_transmit_v2(canStruct[bus].twaiHandle, msg, pdMS_TO_TICKS(TIMEOUT_NORMAL)) != ESP_OK && retry++ < CAN_RETRY_COUNT) {
+	while (twai_transmit_v2(canBus[bus].twaiHandle, msg, pdMS_TO_TICKS(TIMEOUT_NORMAL)) != ESP_OK && retry++ < CAN_RETRY_COUNT) {
 		vTaskDelay(1);
 	}
 

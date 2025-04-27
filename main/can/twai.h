@@ -33,12 +33,13 @@ typedef enum {
 } TwaiBaud_t;
 
 typedef struct {
-	TwaiBus_t			thisBus;
-	TwaiBus_t			outBus;
-	SemaphoreHandle_t	receiveTaskMutex;
-	SemaphoreHandle_t	alertTaskMutex;
-	SemaphoreHandle_t	busOffMutex;
-	twai_handle_t		twaiHandle;
+	const TwaiBus_t				thisBus;
+	const TwaiBus_t				outBus;
+	const twai_general_config_t twaiConfig;
+	SemaphoreHandle_t			receiveTaskMutex;
+	SemaphoreHandle_t			alertTaskMutex;
+	SemaphoreHandle_t			busOffMutex;
+	twai_handle_t				twaiHandle;
 } TwaiBusData_t;
 
 class CTwai {
@@ -59,7 +60,7 @@ private:
 	static void					receiveTask(void* arg);
 	static twai_timing_config_t	getBaudConfig(TwaiBaud_t baud);
 
-	static TwaiBusData_t		canStruct[TWAI_BUS_COUNT];
+	static TwaiBusData_t		canBus[TWAI_BUS_COUNT];
 
 	static TwaiBaud_t			baudRate;
 	static TwaiState_t			currentState;

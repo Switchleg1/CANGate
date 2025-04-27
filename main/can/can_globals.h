@@ -20,7 +20,8 @@ typedef int16_t								bool16;
 #define SafeDeleteQueue(x, y)				if(x) { vQueueDelete(x); x = NULL; y = true; }
 
 //CAN
-#define CAN_INTERNAL_BUFFER_SIZE			1024
+#define CAN_INTERNAL_RX_BUFFER_SIZE			1024
+#define CAN_INTERNAL_TX_BUFFER_SIZE			1024
 #define	CAN0_TX_PORT						GPIO_NUM_5
 #define CAN0_RX_PORT						GPIO_NUM_4
 #define	CAN1_TX_PORT						GPIO_NUM_6
@@ -32,7 +33,7 @@ typedef int16_t								bool16;
 #define CAN_CLK_DIVIDER						0
 #define CAN_FLAGS							ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_IRAM
 #define CAN_FILTER							TWAI_FILTER_CONFIG_ACCEPT_ALL()
-#define CAN_RETRY_COUNT						200
+#define CAN_RETRY_COUNT						1
 
 #define CAN_TASK_STACK_SIZE					3072
 #define CAN_TWAI_TASK_PRIO 			 		2
