@@ -5,16 +5,22 @@
 
 #define TAG		"Main"
 
+void onMessageReceived(TwaiBus_t thisBus, TwaiBus_t outBus, twai_message_t* msg)
+{
+	Twai.send(outBus, msg);
+}
 
 void mainInit()
 {
 	Twai.init();
+	Twai.setBusCallback(TWAI_IN_BUS, onMessageReceived);
+	Twai.setBusCallback(TWAI_OUT_BUS, onMessageReceived);
 	Twai.start(TWAI_BAUD_500);
 }
 
 void mainLoop()
 {
-
+	vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
 extern "C" void app_main(void)

@@ -24,7 +24,8 @@ TwaiBusData_t		CTwai::canBus[TWAI_BUS_COUNT] = {
 		.receiveTaskMutex	= NULL,
 		.alertTaskMutex		= NULL,
 		.busOffMutex		= NULL,
-		.twaiHandle			= NULL
+		.twaiHandle			= NULL,
+		.onMessageReceived	= NULL,
 	},
 	{
 		.thisBus			= TWAI_OUT_BUS,
@@ -45,7 +46,8 @@ TwaiBusData_t		CTwai::canBus[TWAI_BUS_COUNT] = {
 		.receiveTaskMutex	= NULL,
 		.alertTaskMutex		= NULL,
 		.busOffMutex		= NULL,
-		.twaiHandle			= NULL
+		.twaiHandle			= NULL,
+		.onMessageReceived	= NULL,
 	},
 };
 TwaiBaud_t			CTwai::baudRate				= TWAI_BAUD_500;
@@ -55,7 +57,7 @@ CTwai Twai;
 
 //----------------TWAI Public Functions---------------------------//
 
-int CTwai::init()
+TwaiReturn_t CTwai::init()
 {
 	if (currentState != TWAI_DEINIT) {
 		ESP_LOGI(TAG, "init: invalid state");
@@ -77,7 +79,7 @@ int CTwai::init()
 	return TWAI_OK;
 }
 
-int CTwai::deinit()
+TwaiReturn_t CTwai::deinit()
 {
 	if (currentState != TWAI_INIT) {
 		ESP_LOGI(TAG, "deinit: invalid state");
@@ -105,7 +107,7 @@ int CTwai::deinit()
 	return TWAI_ERROR;
 }
 
-int CTwai::start(TwaiBaud_t baud)
+TwaiReturn_t CTwai::start(TwaiBaud_t baud)
 {
 	if (currentState != TWAI_INIT) {
 		ESP_LOGI(TAG, "start: invalid state");
@@ -138,7 +140,7 @@ int CTwai::start(TwaiBaud_t baud)
 	return TWAI_OK;
 }
 
-int CTwai::stop()
+TwaiReturn_t CTwai::stop()
 {
 	if (currentState != TWAI_RUNNING) {
 		ESP_LOGI(TAG, "stop: invalid state");
@@ -168,17 +170,17 @@ int CTwai::stop()
 	return TWAI_OK;
 }
 
-int CTwai::send(TwaiBus_t bus, twai_message_t * msg)
+TwaiReturn_t CTwai::send(TwaiBus_t bus, twai_message_t * msg)
 {
 	tMUTEX(canBus[bus].busOffMutex);
 	rMUTEX(canBus[bus].busOffMutex);
 
-	uint16_t retry = 0;
-	while (twai_transmit_v2(canBus[bus].twaiHandle, msg, pdMS_TO_TICKS(TIMEOUT_NORMAL)) != ESP_OK && retry++ < CAN_RETRY_COUNT) {
+	int16_t retry = -1;
+	while (twai_transmit_v2(canBus[bus].twaiHandle, msg, pdMS_TO_TICKS(TIMEOUT_NORMAL)) != ESP_OK && ++retry < CAN_RETRY_COUNT) {
 		vTaskDelay(1);
 	}
 
-	return retry != CAN_RETRY_COUNT ? TWAI_OK : TWAI_ERROR;
+	return retry < CAN_RETRY_COUNT ? TWAI_OK : TWAI_ERROR;
 }
 
 const char* CTwai::baudString(TwaiBaud_t baud)
@@ -279,7 +281,8 @@ void IRAM_ATTR CTwai::receiveTask(void* arg)
 		if (twai_receive_v2(busData->twaiHandle, &twaiRXmsg, pdMS_TO_TICKS(TIMEOUT_LONG)) == ESP_OK) {
 			ESP_LOGD(TAG, "receiveTask: received [%" PRIX32 "] and length [%" PRIu16 "]", twaiRXmsg.identifier, twaiRXmsg.data_length_code);
 
-			send(busData->outBus, &twaiRXmsg);
+			if (busData->onMessageReceived) busData->onMessageReceived(busData->thisBus, busData->outBus, &twaiRXmsg);
+			else send(busData->outBus, &twaiRXmsg);
 		}
 
 		//reset the WDT and yield to tasks

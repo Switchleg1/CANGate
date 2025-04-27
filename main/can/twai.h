@@ -1,11 +1,13 @@
 #ifndef TWAI_H
 #define TWAI_H
 
-#define TWAI_OK					0
-#define TWAI_ERROR              1
-#define TWAI_ALLOC_ERROR        2
-#define TWAI_INVALID_STATE      3
-#define TWAI_QUEUE_FULL         4
+typedef enum {
+	TWAI_OK,
+	TWAI_ERROR,
+	TWAI_ALLOC_ERROR,
+	TWAI_INVALID_STATE,
+	TWAI_QUEUE_FULL
+} TwaiReturn_t;
 
 typedef enum {
 	TWAI_IN_BUS,
@@ -32,6 +34,8 @@ typedef enum {
 	TWAI_BAUD_1MB
 } TwaiBaud_t;
 
+typedef void (*CBTwaiMessageReceived)(TwaiBus_t thisBus, TwaiBus_t outBus, twai_message_t* msg);
+
 typedef struct {
 	const TwaiBus_t				thisBus;
 	const TwaiBus_t				outBus;
@@ -40,17 +44,20 @@ typedef struct {
 	SemaphoreHandle_t			alertTaskMutex;
 	SemaphoreHandle_t			busOffMutex;
 	twai_handle_t				twaiHandle;
+	CBTwaiMessageReceived		onMessageReceived;
 } TwaiBusData_t;
 
 class CTwai {
 public:
-	static int					init();
-	static int					deinit();
+	static TwaiReturn_t			init();
+	static TwaiReturn_t			deinit();
 
-	static int					start(TwaiBaud_t baud);
-	static int					stop();
+	static TwaiReturn_t			start(TwaiBaud_t baud);
+	static TwaiReturn_t			stop();
 
-	static int					send(TwaiBus_t bus, twai_message_t* msg);
+	static void					setBusCallback(TwaiBus_t bus, CBTwaiMessageReceived cb) { canBus[bus].onMessageReceived = cb; }
+
+	static TwaiReturn_t			send(TwaiBus_t bus, twai_message_t* msg);
 	static inline TwaiBaud_t	getBaud() { return baudRate; }
 	static const char*			baudString(TwaiBaud_t baud);
 	static inline TwaiState_t	getCurrentState() { return currentState; }

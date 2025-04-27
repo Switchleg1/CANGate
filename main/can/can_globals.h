@@ -3,13 +3,6 @@
 
 #include "globals.h"
 
-// Header we expect to send/receive on UDS packets
-typedef struct {
-	uint32_t	id;
-	uint16_t	size;
-	uint8_t*	buffer;
-} UDSPacket_t;
-
 //defines
 typedef int16_t								bool16;
 #define cMUTEX(x)							xSemaphoreTake(x, 0)
