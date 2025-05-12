@@ -122,6 +122,8 @@ TwaiReturn_t CTwai::start(TwaiBaud_t baud)
 	baudRate = baud;
 
 	for (uint8_t i = 0; i < TWAI_BUS_COUNT; i++) {
+		ESP_LOGI(TAG, "start: installing driver [%u]", i);
+
 		const twai_filter_config_t	can_filter_config = CAN_FILTER;
 		twai_timing_config_t can_timing_config = getBaudConfig(baud);
 		ESP_ERROR_CHECK(twai_driver_install_v2(&canBus[i].twaiConfig, &can_timing_config, &can_filter_config, &canBus[i].twaiHandle));
@@ -131,8 +133,10 @@ TwaiReturn_t CTwai::start(TwaiBaud_t baud)
 	currentState = TWAI_RUNNING;
 
 	for (uint8_t i = 0; i < TWAI_BUS_COUNT; i++) {
-		ESP_ERROR_CHECK(xTaskCreate(alertTask,   "twai_alert_task",   CAN_TASK_STACK_SIZE, (void*)&canBus[i], CAN_TWAI_TASK_PRIO, NULL));
-		ESP_ERROR_CHECK(xTaskCreate(receiveTask, "twai_receive_task", CAN_TASK_STACK_SIZE, (void*)&canBus[i], CAN_TWAI_TASK_PRIO, NULL));
+		ESP_LOGI(TAG, "start: starting services [%u]", i);
+
+		xTaskCreate(alertTask, "twai_alert_task", CAN_TASK_STACK_SIZE, (void*)&canBus[i], CAN_TWAI_TASK_PRIO, NULL);
+		xTaskCreate(receiveTask, "twai_receive_task", CAN_TASK_STACK_SIZE, (void*)&canBus[i], CAN_TWAI_TASK_PRIO, NULL);
 	}
 
 	ESP_LOGI(TAG, "start: complete");
@@ -226,23 +230,24 @@ void IRAM_ATTR CTwai::alertTask(void* arg)
 	ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
 
 	tMUTEX(busData->alertTaskMutex);
-	ESP_LOGI(TAG, "alertTask: started");
+	ESP_LOGI(TAG, "alertTask: started bus [%u]", busData->thisBus);
 	uint32_t alerts;
 	while (currentState == TWAI_RUNNING) {
-		ESP_LOGD(TAG, "alertTask: memory free [%" PRIu16 "]", uxTaskGetStackHighWaterMark(NULL));
+		ESP_LOGD(TAG, "alertTask: memory free [%u] [%" PRIu16 "] on bus [%u]", busData->thisBus, uxTaskGetStackHighWaterMark(NULL), busData->thisBus);
+
 		if (twai_read_alerts_v2(busData->twaiHandle, &alerts, pdMS_TO_TICKS(TIMEOUT_LONG)) == ESP_OK) {
 			if (alerts & TWAI_ALERT_ABOVE_ERR_WARN) {
-				ESP_LOGI(TAG, "alertTask: surpassed error warning limit");
+				ESP_LOGI(TAG, "alertTask: surpassed error warning limit on bus [%u]", busData->thisBus);
 			}
 
 			if (alerts & TWAI_ALERT_ERR_PASS) {
-				ESP_LOGI(TAG, "alertTask: entered error passive state");
+				ESP_LOGI(TAG, "alertTask: entered error passive state on bus [%u]", busData->thisBus);
 			}
 
 			if (alerts & TWAI_ALERT_BUS_OFF) {
-				ESP_LOGI(TAG, "alertTask: bus off state");
+				ESP_LOGI(TAG, "alertTask: off state on bus [%u]", busData->thisBus);
 				if (xSemaphoreTake(busData->busOffMutex, pdMS_TO_TICKS(TIMEOUT_NORMAL)) == pdTRUE) {
-					ESP_LOGI(TAG, "alertTask: initiate bus recovery");
+					ESP_LOGI(TAG, "alertTask: initiate recovery on bus [%u]", busData->thisBus);
 					ESP_ERROR_CHECK(twai_initiate_recovery_v2(busData->twaiHandle));    //Needs 128 occurrences of bus free signal
 				}
 			}
@@ -250,7 +255,7 @@ void IRAM_ATTR CTwai::alertTask(void* arg)
 			if (alerts & TWAI_ALERT_BUS_RECOVERED) {
 				ESP_ERROR_CHECK(twai_start_v2(busData->twaiHandle));
 				xSemaphoreGive(busData->busOffMutex);
-				ESP_LOGI(TAG, "alertTask: bus recovered");
+				ESP_LOGI(TAG, "alertTask: recovered bus [%u]", busData->thisBus);
 			}
 		}
 
@@ -258,7 +263,7 @@ void IRAM_ATTR CTwai::alertTask(void* arg)
 		esp_task_wdt_reset();
 		taskYIELD();
 	}
-	ESP_LOGI(TAG, "alertTask: stopped");
+	ESP_LOGI(TAG, "alertTask: stopped bus [%u]", busData->thisBus);
 	rMUTEX(busData->alertTaskMutex);
 
 	//unsubscribe to WDT and delete task
@@ -275,11 +280,13 @@ void IRAM_ATTR CTwai::receiveTask(void* arg)
 	ESP_ERROR_CHECK(esp_task_wdt_status(NULL));
 
 	tMUTEX(busData->receiveTaskMutex);
-	ESP_LOGI(TAG, "receiveTask: started");
+	ESP_LOGI(TAG, "receiveTask: started bus [%u]", busData->thisBus);
 	twai_message_t twaiRXmsg;
 	while (currentState == TWAI_RUNNING) {
+		ESP_LOGD(TAG, "receiveTask: memory free [%u] [%" PRIu16 "] on bus [%u]", busData->thisBus, uxTaskGetStackHighWaterMark(NULL), busData->thisBus);
+
 		if (twai_receive_v2(busData->twaiHandle, &twaiRXmsg, pdMS_TO_TICKS(TIMEOUT_LONG)) == ESP_OK) {
-			ESP_LOGD(TAG, "receiveTask: received [%" PRIX32 "] and length [%" PRIu16 "]", twaiRXmsg.identifier, twaiRXmsg.data_length_code);
+			ESP_LOGD(TAG, "receiveTask: received [%" PRIX32 "] and length [%" PRIu16 "] on bus [%u]", twaiRXmsg.identifier, twaiRXmsg.data_length_code, busData->thisBus);
 
 			if (busData->onMessageReceived) busData->onMessageReceived(busData->thisBus, busData->outBus, &twaiRXmsg);
 			else send(busData->outBus, &twaiRXmsg);
@@ -289,7 +296,7 @@ void IRAM_ATTR CTwai::receiveTask(void* arg)
 		esp_task_wdt_reset();
 		taskYIELD();
 	}
-	ESP_LOGI(TAG, "receiveTask: stopped");
+	ESP_LOGI(TAG, "receiveTask: stopped bus [%u]", busData->thisBus);
 	rMUTEX(busData->receiveTaskMutex);
 
 	//unsubscribe to WDT and delete task

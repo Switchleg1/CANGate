@@ -15,8 +15,8 @@ typedef int16_t								bool16;
 //CAN
 #define CAN_INTERNAL_RX_BUFFER_SIZE			1024
 #define CAN_INTERNAL_TX_BUFFER_SIZE			1024
-#define	CAN0_TX_PORT						GPIO_NUM_5
-#define CAN0_RX_PORT						GPIO_NUM_4
+#define	CAN0_TX_PORT						GPIO_NUM_4
+#define CAN0_RX_PORT						GPIO_NUM_5
 #define	CAN1_TX_PORT						GPIO_NUM_6
 #define CAN1_RX_PORT						GPIO_NUM_7
 #define CAN_CLK_IO							TWAI_IO_UNUSED
